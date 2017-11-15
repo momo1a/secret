@@ -62,18 +62,25 @@ class Spider
         'stackoverflow'  =>  'https://stackoverflow.com/tags'
     );
 
+    protected $_baseSite = array(
+        'stackoverflow' =>  'https://stackoverflow.com'
+    );
+
 
     public function __construct()
     {
-        $this->_printMeg('Spider Initialization.');
+
     }
 
     public function parse(){
+
+        $this->_printMeg('Spider Initialization.');
+
         foreach ($this->_urls as $key=>$url){
             $this->_printMeg('Spider start fetch '.$key.'.');
             switch ($key){
                 case 'stackoverflow':
-                    $this->fetchStackOverFlow($url,'https://stackoverflow.com');
+                    $this->fetchStackOverFlow($url,$this->_baseSite['stackoverflow']);
                     break;
                 default :
                     break;
@@ -82,20 +89,51 @@ class Spider
 
     }
 
+
+    /**
+     * fetch stackoverflow
+     * @param $url
+     * @param $referer
+     */
     protected function fetchStackOverFlow($url,$referer){
 
         $documentTag = $this->_httpRequest($url,$referer);
         $xpath = $this->_loadXpath($documentTag);
         $pageTagsNode = $xpath->query('//table[@id="tags-browser"]/tr/td/a[@class="post-tag"]');
         for ($i = 0; $i<$pageTagsNode->length; $i++){
-            $tagsListPage = 'https://stackoverflow.com'.$pageTagsNode->item($i)->getAttribute('href');
+            $tagsListPage = $this->_baseSite['stackoverflow'].$pageTagsNode->item($i)->getAttribute('href').'?sort=newest&page=1&pagesize=50';
+            // 标签名插入标签表 如果存在略过
             $tagName = $pageTagsNode->item($i)->textContent;
+
             $this->_printMeg('Start request '.$tagsListPage);
-            //echo 'https://stackoverflow.com'.$tagsListPage."===".$tagName."\r\n";
+            $listFirstPageContent = $this->_httpRequest($tagsListPage,$this->_baseSite['stackoverflow']);
+            $listXpath = $this->_loadXpath($listFirstPageContent);
+            //获得问题列表页的问题节点
+            $questionsNode = $listXpath->query('//div[@id="questions"]/div/div/h3/a[@class="question-hyperlink"]');
+            if($questionsNode->length > 0){
+                /*  *  获取到每个节点的链接 id   如果id已经采集了略过 *  */
+                for ($j = 0; $j < $questionsNode->length; $j++){
+                    $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
+                    // 问题内容页的链接地址
+                    $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                    // 问题id
+                    preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
+                    $questionId = $match[1];
+
+                    echo PHP_EOL.$questionUrl.PHP_EOL.$questionId;
+                }
+            }
+
+
         }
 
     }
 
+    /**
+     * load xpath document
+     * @param $documentTree
+     * @return DOMXPath
+     */
 
     protected function _loadXpath($documentTree){
         $document = new DOMDocument();

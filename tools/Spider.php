@@ -120,7 +120,35 @@ class Spider
                     preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
                     $questionId = $match[1];
 
-                    echo PHP_EOL.$questionUrl.PHP_EOL.$questionId;
+                    //echo PHP_EOL.$questionUrl.PHP_EOL.$questionId;
+
+                    // 请求问题页面
+                    $questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
+                    $questionXpath = $this->_loadXpath($questionDocument);
+
+                    // 标题
+                    $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
+                    if($titleNode->length == 1){
+                        $title = $titleNode->item(0)->textContent;
+                    }else{
+                        $this->_printMeg('Not Fetched Title Url:'.$questionUrl,301,'WARNING');
+                        continue;
+                    }
+
+                    // 问题内容
+
+                    $contentNode = $questionXpath->query('//div[@class="question"]/table/tr/td[@class="postcell"]/div/div[@class="post-text"]');
+
+                    if ($contentNode->length == 1){
+                        $content = $contentNode->item(0)->C14N();
+                        var_dump($content);
+                    }else{
+                        $this->_printMeg('Not Fetched Content Container Url:'.$questionUrl,301,'WARNING');
+                        continue;
+                    }
+
+                    echo $title."\r\n";
+
                 }
             }
 

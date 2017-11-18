@@ -10,8 +10,10 @@ class Spider
 {
 
 
-
-
+    /**
+     * userAgent
+     * @var array
+     */
     protected $_userAgent = array(
         "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36 OPR/26.0.1656.60",
         "Opera/8.0 (Windows NT 5.1; U; en)",
@@ -58,13 +60,31 @@ class Spider
         "Mozilla/4.0 (compatible; MSIE 6.0; ) Opera/UCWEB7.0.2.37/28/999",
 
     );
+
+    /**
+     * will fetch the sites first page
+     * @var array
+     */
     protected $_urls = array(
         'stackoverflow'  =>  'https://stackoverflow.com/tags'
     );
 
+
+    /**
+     * fetch base site domain
+     * @var array
+     */
+
     protected $_baseSite = array(
         'stackoverflow' =>  'https://stackoverflow.com'
     );
+
+
+    /**
+     * save fetch data
+     * @var null
+     */
+    protected $_data = null;
 
 
     public function __construct()
@@ -78,12 +98,16 @@ class Spider
 
         foreach ($this->_urls as $key=>$url){
             $this->_printMeg('Spider start fetch '.$key.'.');
-            switch ($key){
-                case 'stackoverflow':
-                    $this->fetchStackOverFlow($url,$this->_baseSite['stackoverflow']);
-                    break;
-                default :
-                    break;
+            try {
+                switch ($key) {
+                    case 'stackoverflow':
+                        $this->fetchStackOverFlow($url, $this->_baseSite['stackoverflow']);
+                        break;
+                    default :
+                        break;
+                }
+            }catch (Exception $e){
+                $this->_printMeg($e->getTraceAsString(),500,'ERROR');
             }
         }
 
@@ -116,38 +140,50 @@ class Spider
                     $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
                     // 问题内容页的链接地址
                     $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                    $this->_data['originUrl'] = $questionUrl;
                     // 问题id
                     preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
-                    $questionId = $match[1];
+                    $this->_data['qid'] = $match[1];
 
-                    //echo PHP_EOL.$questionUrl.PHP_EOL.$questionId;
 
                     // 请求问题页面
-                    $questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
+                    //$questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
+                    $questionDocument = $this->_httpRequest('https://stackoverflow.com/questions/47302544/why-do-lots-of-old-programs-use-floor0-5-input-instead-of-roundinput',$this->_baseSite['stackoverflow']);
                     $questionXpath = $this->_loadXpath($questionDocument);
 
                     // 标题
                     $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
                     if($titleNode->length == 1){
-                        $title = $titleNode->item(0)->textContent;
+                        $this->_data['title'] = $titleNode->item(0)->textContent;
                     }else{
                         $this->_printMeg('Not Fetched Title Url:'.$questionUrl,301,'WARNING');
                         continue;
                     }
 
-                    // 问题内容
+                    // 问题和答案内容 (包括标签，提问，回答，评论)
 
-                    $contentNode = $questionXpath->query('//div[@class="question"]/table/tr/td[@class="postcell"]/div/div[@class="post-text"]');
-
-                    if ($contentNode->length == 1){
-                        $content = $contentNode->item(0)->C14N();
-                        var_dump($content);
-                    }else{
-                        $this->_printMeg('Not Fetched Content Container Url:'.$questionUrl,301,'WARNING');
+                    $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or @class="post-taglist"]');
+                    var_dump($contentNode->length);
+                    if ($contentNode->length >0) {
+                        file_put_contents('test.html','');
+                        for($i=0; $i<$contentNode->length; $i++){
+                            if($i == 0){
+                                file_put_contents('test.html','<h1 id="my-question">This is question!</h1>',FILE_APPEND);
+                            }elseif ($i >= 2){
+                                if($i == 2)
+                                    file_put_contents('test.html','<h1 id="my-answers">This is answers!</h1>',FILE_APPEND);
+                                $answerNum = $i-2+1;
+                                file_put_contents('test.html','<h2 class="answers-num">answer'. $answerNum .'</h2>',FILE_APPEND );
+                            }
+                            file_put_contents('test.html', $contentNode->item($i)->C14N(),FILE_APPEND );
+                        }
+                        var_dump($questionUrl);
+                        exit;
+                    }else {
+                        $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
                         continue;
                     }
 
-                    echo $title."\r\n";
 
                 }
             }
@@ -165,6 +201,7 @@ class Spider
 
     protected function _loadXpath($documentTree){
         $document = new DOMDocument();
+        libxml_use_internal_errors(true);
         @$document->loadHTML($documentTree);
         $xpath = new DOMXPath($document);
 

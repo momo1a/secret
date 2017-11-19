@@ -162,20 +162,32 @@ class Spider
 
                     // 问题和答案内容 (包括标签，提问，回答，评论)
 
-                    $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or @class="post-taglist"]');
-                    var_dump($contentNode->length);
+                    $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or contains(@class,"js-comments-container")]');
+                    //var_dump($contentNode->length);
                     if ($contentNode->length >0) {
                         file_put_contents('test.html','');
-                        for($i=0; $i<$contentNode->length; $i++){
-                            if($i == 0){
-                                file_put_contents('test.html','<h1 id="my-question">This is question!</h1>',FILE_APPEND);
+                        for($i=0,$answerNum = 1; $i<$contentNode->length; $i++){
+                            //$replaceStr = preg_replace('/– <a class=\"comment-user\"[\s\S]+<\/span><\/span>&#xD;/','',$htmlStr);
+                            $htmlStr = preg_replace('/&#xD;/','',$contentNode->item($i)->C14N());
+                            $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u','',$htmlStr);
+                            if($i == 0) {
+                                // 问题标识
+                                file_put_contents('test.html', '<h1 id="my-question">This is question!</h1>', FILE_APPEND);
+                            }elseif($i == 1){
+                                // 问题评论
+                                file_put_contents('test.html', '<h2 id="my-comment">This is question comment!</h2>', FILE_APPEND);
+
                             }elseif ($i >= 2){
-                                if($i == 2)
-                                    file_put_contents('test.html','<h1 id="my-answers">This is answers!</h1>',FILE_APPEND);
-                                $answerNum = $i-2+1;
-                                file_put_contents('test.html','<h2 class="answers-num">answer'. $answerNum .'</h2>',FILE_APPEND );
+                                if ($i == 2)
+                                     file_put_contents('test.html', '<h1 id="my-answers">This is answers!</h1>', FILE_APPEND);
+                                if($i % 2 == 0) {
+                                    file_put_contents('test.html', '<h2 class="answers-num">answer' . $answerNum . '</h2>', FILE_APPEND);
+                                    $answerNum++;
+                                }else{
+                                    file_put_contents('test.html', '<h2 class="my-comment">answer comment!!</h2>', FILE_APPEND);
+                                }
                             }
-                            file_put_contents('test.html', $contentNode->item($i)->C14N(),FILE_APPEND );
+                            file_put_contents('test.html', $replaceStr,FILE_APPEND );
                         }
                         var_dump($questionUrl);
                         exit;

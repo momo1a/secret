@@ -7,7 +7,7 @@ CREATE TABLE `my_questions` (
   `content` text COMMENT '内容',
   `originUrl` varchar(255)  NOT NULL DEFAULT '' COMMENT '原帖地址',
   `dateline` int(11) NOT NULL DEFAULT '0' COMMENT '添加时间',
-  `tagId` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '标签id',
+  `tagId` VARCHAR(255)  NOT NULL DEFAULT '' COMMENT '标签id json格式',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COMMENT="问题表";
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COMMENT="问题表";
 

@@ -125,84 +125,94 @@ class Spider
         $xpath = $this->_loadXpath($documentTag);
         $pageTagsNode = $xpath->query('//table[@id="tags-browser"]/tr/td/a[@class="post-tag"]');
         for ($i = 0; $i<$pageTagsNode->length; $i++){
-            $tagsListPage = $this->_baseSite['stackoverflow'].$pageTagsNode->item($i)->getAttribute('href').'?sort=newest&page=1&pagesize=50';
-            // 标签名插入标签表 如果存在略过
-            $tagName = $pageTagsNode->item($i)->textContent;
+            $j = 1;
+            while (true) {
+                $tagsListPage = $this->_baseSite['stackoverflow'] . $pageTagsNode->item($i)->getAttribute('href') . '?sort=newest&page='.$j.'&pagesize=50';
+                // 标签名插入标签表 如果存在略过
+                $tagName = $pageTagsNode->item($i)->textContent;
 
-            $this->_printMeg('Start request '.$tagsListPage);
-            $listFirstPageContent = $this->_httpRequest($tagsListPage,$this->_baseSite['stackoverflow']);
-            $listXpath = $this->_loadXpath($listFirstPageContent);
-            //获得问题列表页的问题节点
-            $questionsNode = $listXpath->query('//div[@id="questions"]/div/div/h3/a[@class="question-hyperlink"]');
-            if($questionsNode->length > 0){
-                /*  *  获取到每个节点的链接 id   如果id已经采集了略过 *  */
-                for ($j = 0; $j < $questionsNode->length; $j++){
-                    $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
-                    // 问题内容页的链接地址
-                    $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
-                    $this->_data['originUrl'] = $questionUrl;
-                    // 问题id
-                    preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
-                    $this->_data['qid'] = $match[1];
-
-
-                    // 请求问题页面
-                    //$questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
-                    $questionDocument = $this->_httpRequest('https://stackoverflow.com/questions/47302544/why-do-lots-of-old-programs-use-floor0-5-input-instead-of-roundinput',$this->_baseSite['stackoverflow']);
-                    $questionXpath = $this->_loadXpath($questionDocument);
-
-                    // 标题
-                    $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
-                    if($titleNode->length == 1){
-                        $this->_data['title'] = $titleNode->item(0)->textContent;
-                    }else{
-                        $this->_printMeg('Not Fetched Title Url:'.$questionUrl,301,'WARNING');
-                        continue;
-                    }
-
-                    // 问题和答案内容 (包括标签，提问，回答，评论)
-
-                    $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or contains(@class,"js-comments-container")]');
-                    //var_dump($contentNode->length);
-                    if ($contentNode->length >0) {
-                        file_put_contents('test.html','');
-                        for($i=0,$answerNum = 1; $i<$contentNode->length; $i++){
-                            //$replaceStr = preg_replace('/– <a class=\"comment-user\"[\s\S]+<\/span><\/span>&#xD;/','',$htmlStr);
-                            $htmlStr = preg_replace('/&#xD;/','',$contentNode->item($i)->C14N());
-                            $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u','',$htmlStr);
-                            if($i == 0) {
-                                // 问题标识
-                                file_put_contents('test.html', '<h1 id="my-question">This is question!</h1>', FILE_APPEND);
-                            }elseif($i == 1){
-                                // 问题评论
-                                file_put_contents('test.html', '<h2 id="my-comment">This is question comment!</h2>', FILE_APPEND);
-
-                            }elseif ($i >= 2){
-                                if ($i == 2)
-                                     file_put_contents('test.html', '<h1 id="my-answers">This is answers!</h1>', FILE_APPEND);
-                                if($i % 2 == 0) {
-                                    file_put_contents('test.html', '<h2 class="answers-num">answer' . $answerNum . '</h2>', FILE_APPEND);
-                                    $answerNum++;
-                                }else{
-                                    file_put_contents('test.html', '<h2 class="my-comment">answer comment!!</h2>', FILE_APPEND);
-                                }
-                            }
-                            file_put_contents('test.html', $replaceStr,FILE_APPEND );
-                        }
-                        var_dump($questionUrl);
-                        exit;
-                    }else {
-                        $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
-                        continue;
-                    }
-
-
-                }
+                $this->_printMeg('Start request ' . $tagsListPage);
+                $listFirstPageContent = $this->_httpRequest($tagsListPage, $this->_baseSite['stackoverflow']);
+                $listXpath = $this->_loadXpath($listFirstPageContent);
+                $nextPageNode = $listXpath->query('//span[contains(@class,"next")]');
+                $this->fetchStackOverFlowQuestionPage($listXpath);
+                if($nextPageNode->length == 0)
+                    $this->_printMeg('Over Fetch '.$tagName.' Tag content');
+                    break;
+                $j++;
             }
-
 
         }
 
+    }
+
+
+    /**
+     * @param $tagsListPage
+     */
+    protected function fetchStackOverFlowQuestionPage($listXpath){
+
+        //获得问题列表页的问题节点
+        $questionsNode = $listXpath->query('//div[@id="questions"]/div/div/h3/a[@class="question-hyperlink"]');
+        if($questionsNode->length > 0){
+            /*  *  获取到每个节点的链接 id   如果id已经采集了略过 *  */
+            for ($j = 0; $j < $questionsNode->length; $j++){
+                $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
+                // 问题内容页的链接地址
+                $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                $this->_data['originUrl'] = $questionUrl;
+                // 问题id
+                preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
+                $this->_data['qid'] = $match[1];
+
+
+                // 请求问题页面
+                $this->_printMeg('start request question url : '.$questionUrl);
+                $questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
+                $questionXpath = $this->_loadXpath($questionDocument);
+
+                // 标题
+                $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
+                if($titleNode->length == 1){
+                    $this->_data['title'] = $titleNode->item(0)->textContent;
+                }else{
+                    $this->_printMeg('Not Fetched Title Url:'.$questionUrl,301,'WARNING');
+                    continue;
+                }
+
+                // 问题和答案内容 (提问，回答，评论)
+
+                $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or contains(@class,"js-comments-container")]');
+                //var_dump($contentNode->length);
+                if ($contentNode->length >0) {
+                    for($i=0,$answerNum = 1,$html = ''; $i<$contentNode->length; $i++){
+                        $htmlStr = preg_replace('/&#xD;/','',$contentNode->item($i)->C14N());
+                        $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u','',$htmlStr);
+                        if($i == 0) {
+                            // 问题标识
+                            $html .= '<h1 id="my-question">question contest:</h1>'.$replaceStr;
+                        }elseif($i == 1){
+                            // 问题评论
+                            $html .= '<h2 id="my-comment">question comments:</h2>'.$replaceStr;
+                        }elseif ($i >= 2){
+                            if ($i == 2)
+                                $html .= '<h1 id="my-answers">answers:</h1>'.$replaceStr;
+                            if($i % 2 == 0) {
+                                $html .= '<h2 class="answers-num">answer' . $answerNum . ':</h2>'.$replaceStr;
+                                $answerNum++;
+                            }else{
+                                $html .= '<h2 class="my-comment">answer comments:</h2>'.$replaceStr;
+                            }
+                        }
+                    }
+                    $this->_data['content'] = $html;
+                    //file_put_contents(time().rand(100000,999999).'test.html',$html);
+                }else {
+                    $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
+                    continue;
+                }
+            }
+        }
     }
 
     /**

@@ -131,7 +131,7 @@ class Spider
                 // 标签名插入标签表 如果存在略过
                 $tagName = $pageTagsNode->item($i)->textContent;
 
-                $this->_printMeg('Start request ' . $tagsListPage);
+                $this->_printMeg('Start request list page' . $tagsListPage);
                 $listFirstPageContent = $this->_httpRequest($tagsListPage, $this->_baseSite['stackoverflow']);
                 $listXpath = $this->_loadXpath($listFirstPageContent);
                 $nextPageNode = $listXpath->query('//span[contains(@class,"next")]');

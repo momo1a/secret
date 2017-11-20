@@ -80,6 +80,8 @@ class Spider
     );
 
 
+    protected $_stackOverFlowTagHasNextList =  true;
+
     /**
      * save fetch data
      * @var null
@@ -101,7 +103,11 @@ class Spider
             try {
                 switch ($key) {
                     case 'stackoverflow':
-                        $this->fetchStackOverFlow($url, $this->_baseSite['stackoverflow']);
+                        $j = 1;
+                        while ($this->_stackOverFlowTagHasNextList) {
+                            $this->fetchStackOverFlow($url . '?page='.$j.'&tab=popular', $this->_baseSite['stackoverflow']);
+                            $j++;
+                        }
                         break;
                     default :
                         break;
@@ -143,6 +149,12 @@ class Spider
             }
 
         }
+        // 标签页下一页节点
+        $tagNextPage = $xpath->query('//span[contains(@class,"next")]');
+        if ($tagNextPage->length == 0){
+            $this->_stackOverFlowTagHasNextList = false;
+        }
+
 
     }
 
@@ -196,7 +208,7 @@ class Spider
                             $html .= '<h2 id="my-comment">question comments:</h2>'.$replaceStr;
                         }elseif ($i >= 2){
                             if ($i == 2)
-                                $html .= '<h1 id="my-answers">answers:</h1>'.$replaceStr;
+                                $html .= '<h1 id="my-answers">answers:</h1>';
                             if($i % 2 == 0) {
                                 $html .= '<h2 class="answers-num">answer' . $answerNum . ':</h2>'.$replaceStr;
                                 $answerNum++;
@@ -206,7 +218,7 @@ class Spider
                         }
                     }
                     $this->_data['content'] = $html;
-                    //file_put_contents(time().rand(100000,999999).'test.html',$html);
+                    //file_put_contents(time().rand(100000,999999).'test.html',"<h1 style='color: red'>".$this->_data['title']."</h1>".$html);
                 }else {
                     $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
                     continue;

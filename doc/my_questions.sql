@@ -9,5 +9,5 @@ CREATE TABLE `my_questions` (
   `dateline` int(11) NOT NULL DEFAULT '0' COMMENT '添加时间',
   `tagId` VARCHAR(255)  NOT NULL DEFAULT '' COMMENT '标签id json格式',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COMMENT="问题表";
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COMMENT="问题表";
 

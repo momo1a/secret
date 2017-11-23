@@ -1,10 +1,13 @@
 <?php
+namespace Tools;
+
 /**
  * 蜘蛛类
  * User: <Alex Mo>momo1a@qq.com
  * Date: 2017/11/14 0014
  * Time: 下午 10:42
  */
+
 
 class Spider
 {
@@ -79,8 +82,18 @@ class Spider
         'stackoverflow' =>  'https://stackoverflow.com'
     );
 
-
+    /**
+     * Tag has next page
+     * @var bool
+     */
     protected $_stackOverFlowTagHasNextList =  true;
+
+
+    /**
+     * production env  false
+     * @var bool
+     */
+    protected $_debug = true;
 
     /**
      * save fetch data
@@ -88,12 +101,48 @@ class Spider
      */
     protected $_data = null;
 
+    /**
+     * database connection object
+     * @var null
+     */
+    protected $_databaseConn = null;
 
+
+    /**
+     * table name
+     * @var string
+     */
+    protected $_questions_table = 'my_questions';
+
+    /**
+     * table name
+     * @var string
+     */
+    protected $_tags_table = 'my_tags';
+
+
+    protected $_currentTagId = 0;
+
+    /**
+     *
+     * Spider constructor.
+     */
     public function __construct()
     {
+        try {
+            if (!$this->_databaseConn) {
+                $this->_databaseConn = new Connection('192.168.1.103', '3306', 'root', '123456', 'questions');
+            }
+
+        }catch (\Exception $e){
+            $this->_printMeg($e->getTraceAsString(),'500','ERROR');
+        }
 
     }
 
+    /**
+     * parse fetching
+     */
     public function parse(){
 
         $this->_printMeg('Spider Initialization.');
@@ -136,7 +185,13 @@ class Spider
                 $tagsListPage = $this->_baseSite['stackoverflow'] . $pageTagsNode->item($i)->getAttribute('href') . '?sort=newest&page='.$j.'&pagesize=50';
                 // 标签名插入标签表 如果存在略过
                 $tagName = $pageTagsNode->item($i)->textContent;
-
+                $tagExists = $this->_databaseConn->select('`id`')->from($this->_tags_table)->where(array('value ="'.$tagName.'"'))->row();
+                if (!$tagExists){
+                    $this->_databaseConn->insert($this->_tags_table)->set('value','"'.$tagName.'"')->set('dateline',time())->query();
+                    $this->_currentTagId = $this->_databaseConn->lastInsertId();
+                }else{
+                    $this->_currentTagId = $tagExists['id'];
+                }
                 $this->_printMeg('Start request list page' . $tagsListPage);
                 $listFirstPageContent = $this->_httpRequest($tagsListPage, $this->_baseSite['stackoverflow']);
                 $listXpath = $this->_loadXpath($listFirstPageContent);
@@ -173,10 +228,21 @@ class Spider
                 // 问题内容页的链接地址
                 $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
                 $this->_data['originUrl'] = $questionUrl;
+                $this->_data['origin'] = 1;
+                $this->_data['dateline'] = time();
                 // 问题id
                 preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
                 $this->_data['qid'] = $match[1];
 
+                /* 问题已采集跳过 */
+                $questionExists = $this->_databaseConn->select('*')
+                    ->from($this->_questions_table)
+                    ->where('qid="'.$this->_data['qid'].'"')
+                    ->row();
+                if ($questionExists)
+                    continue;
+
+                $this->_data['tagId'] = $this->_currentTagId;
 
                 // 请求问题页面
                 $this->_printMeg('start request question url : '.$questionUrl);
@@ -218,11 +284,17 @@ class Spider
                         }
                     }
                     $this->_data['content'] = $html;
-                    //file_put_contents(time().rand(100000,999999).'test.html',"<h1 style='color: red'>".$this->_data['title']."</h1>".$html);
+
+
+
                 }else {
                     $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
                     continue;
                 }
+
+                // 插入数据库
+
+                $this->_databaseConn->insert($this->_questions_table)->cols($this->_data)->query();
             }
         }
     }
@@ -234,10 +306,10 @@ class Spider
      */
 
     protected function _loadXpath($documentTree){
-        $document = new DOMDocument();
+        $document = new \DOMDocument();
         libxml_use_internal_errors(true);
         @$document->loadHTML($documentTree);
-        $xpath = new DOMXPath($document);
+        $xpath = new \DOMXPath($document);
 
         return $xpath;
     }
@@ -263,7 +335,7 @@ class Spider
             curl_setopt($ch2, CURLOPT_TIMEOUT, 100);  // 100秒超时
             curl_setopt($ch2, CURLOPT_HTTPHEADER, array('X-FORWARDED-FOR:' . $ip, 'CLIENT-IP:' . $ip));
 
-            //curl_setopt($ch2, CURLOPT_HEADER, true);  //追踪返回302状态码，继续抓取
+            curl_setopt($ch2, CURLOPT_HEADER, true);  //追踪返回302状态码，继续抓取
             curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch2, CURLOPT_FOLLOWLOCATION, true);
 
@@ -300,13 +372,18 @@ class Spider
      * @param string $msg
      */
     protected function _printMeg($msg = 'success',$code = '200' ,$level = 'INFO' ){
+        if ($this->_debug) {
 
-        echo "[".date('Y-m-d H:i:s')."]Spider:::[".$code."][".strtoupper($level)."]:::".$msg."\r\n";
+            echo "[" . date('Y-m-d H:i:s') . "]Spider:::[" . $code . "][" . strtoupper($level) . "]:::" . $msg . "\r\n";
+        }else{
+
+            if (strtoupper($level) == 'WARNING' || strtoupper($level) == 'ERROR'){
+
+                echo "[" . date('Y-m-d H:i:s') . "]Spider:::[" . $code . "][" . strtoupper($level) . "]:::" . $msg . "\r\n";
+            }
+
+        }
 
     }
 
 }
-
-$spider = new  Spider();
-
-$spider->parse();

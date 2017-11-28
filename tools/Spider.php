@@ -120,8 +120,16 @@ class Spider
      */
     protected $_tags_table = 'my_tags';
 
-
+    /**
+     * @var int
+     */
     protected $_currentTagId = 0;
+
+
+    /**
+     * @var null
+     */
+    protected $_saveImageObj = null;
 
     /**
      *
@@ -132,6 +140,10 @@ class Spider
         try {
             if (!$this->_databaseConn) {
                 $this->_databaseConn = new Connection('192.168.1.103', '3306', 'root', '123456', 'questions');
+            }
+
+            if (!$this->_saveImageObj){
+                $this->_saveImageObj = new ImageSave();
             }
 
         }catch (\Exception $e){
@@ -192,7 +204,7 @@ class Spider
                 }else{
                     $this->_currentTagId = $tagExists['id'];
                 }
-                $this->_printMeg('Start request list page' . $tagsListPage);
+                $this->_printMeg('Start request list page: ' . $tagsListPage);
                 $listFirstPageContent = $this->_httpRequest($tagsListPage, $this->_baseSite['stackoverflow']);
                 $listXpath = $this->_loadXpath($listFirstPageContent);
                 $nextPageNode = $listXpath->query('//span[contains(@class,"next")]');
@@ -226,7 +238,8 @@ class Spider
             for ($j = 0; $j < $questionsNode->length; $j++){
                 $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
                 // 问题内容页的链接地址
-                $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                //$questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                $questionUrl = 'https://stackoverflow.com/questions/20035101/why-does-my-javascript-get-a-no-access-control-allow-origin-header-is-present';
                 $this->_data['originUrl'] = $questionUrl;
                 $this->_data['origin'] = 1;
                 $this->_data['dateline'] = time();
@@ -266,20 +279,30 @@ class Spider
                     for($i=0,$answerNum = 1,$html = ''; $i<$contentNode->length; $i++){
                         $htmlStr = preg_replace('/&#xD;/','',$contentNode->item($i)->C14N());
                         $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u','',$htmlStr);
+                        $imgPattern = '/<img[\s\S]+?src=\"(.+?)\"><\/img>/';
+                        preg_match_all($imgPattern,$replaceStr,$matchs);
+
+                        if (count($matchs[1]) > 0){
+                            for ($imgNum=0;$imgNum < count($matchs[1]);$imgNum++){
+                                $imgPath = $this->_saveImageObj->save($matchs[1][$imgNum]);
+                                $pattern = '/'.preg_quote($matchs[1][$imgNum],'/').'/';
+                                $replaceStr = preg_replace($pattern,$imgPath,$replaceStr);
+                            }
+                        }
                         if($i == 0) {
                             // 问题标识
-                            $html .= '<h1 id="my-question">question contest:</h1>'.$replaceStr;
+                            $html .= '<h1 id="my-question">问题内容:</h1>'.$replaceStr;
                         }elseif($i == 1){
                             // 问题评论
-                            $html .= '<h2 id="my-comment">question comments:</h2>'.$replaceStr;
+                            $html .= '<h2 id="my-comment">问题评论:</h2>'.$replaceStr;
                         }elseif ($i >= 2){
                             if ($i == 2)
-                                $html .= '<h1 id="my-answers">answers:</h1>';
+                                $html .= '<h1 id="my-answers">答案:</h1>';
                             if($i % 2 == 0) {
-                                $html .= '<h2 class="answers-num">answer' . $answerNum . ':</h2>'.$replaceStr;
+                                $html .= '<h2 class="answers-num">答案' . $answerNum . ':</h2>'.$replaceStr;
                                 $answerNum++;
                             }else{
-                                $html .= '<h2 class="my-comment">answer comments:</h2>'.$replaceStr;
+                                $html .= '<h2 class="my-comment">答案评论:</h2>'.$replaceStr;
                             }
                         }
                     }
@@ -295,6 +318,8 @@ class Spider
                 // 插入数据库
 
                 $this->_databaseConn->insert($this->_questions_table)->cols($this->_data)->query();
+
+                exit;
             }
         }
     }

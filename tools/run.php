@@ -1,6 +1,8 @@
 <?php
 require dirname(__FILE__).'/Spider.php';
 require dirname(__FILE__).'/Connection.php';
+require dirname(__FILE__).'/ImageSave.php';
+require dirname(__FILE__).'/Config.php';
 
 use Tools\Spider;
 /**

@@ -90,6 +90,13 @@ class Spider
 
 
     /**
+     * 分类id
+     * @var int
+     */
+    protected $_category = 14;   // 对应分类表的《编程语言》id
+
+
+    /**
      * production env  false
      * @var bool
      */
@@ -112,13 +119,25 @@ class Spider
      * table name
      * @var string
      */
-    protected $_questions_table = 'my_questions';
+    protected $_questions_table = 'std_posts';
 
     /**
      * table name
      * @var string
      */
-    protected $_tags_table = 'my_tags';
+    protected $_tags_table = 'std_terms';
+
+    /**
+     * table name
+     * @var string
+     */
+    protected $_tags_category_table = 'std_term_taxonomy';
+
+    /**
+     * table name
+     * @var string
+     */
+    protected $_tags_post_cagory_table = 'std_term_relationships';
 
     /**
      * @var int
@@ -139,7 +158,13 @@ class Spider
     {
         try {
             if (!$this->_databaseConn) {
-                $this->_databaseConn = new Connection('192.168.1.103', '3306', 'root', '123456', 'questions');
+                $this->_databaseConn = new Connection(
+                    DATA_HOST,
+                    DATA_PORT,
+                    DATA_USER,
+                    DATA_PWD,
+                    DATA_DBNAME
+                );
             }
 
             if (!$this->_saveImageObj){
@@ -197,13 +222,6 @@ class Spider
                 $tagsListPage = $this->_baseSite['stackoverflow'] . $pageTagsNode->item($i)->getAttribute('href') . '?sort=newest&page='.$j.'&pagesize=50';
                 // 标签名插入标签表 如果存在略过
                 $tagName = $pageTagsNode->item($i)->textContent;
-                $tagExists = $this->_databaseConn->select('`id`')->from($this->_tags_table)->where(array('value ="'.$tagName.'"'))->row();
-                if (!$tagExists){
-                    $this->_databaseConn->insert($this->_tags_table)->set('value','"'.$tagName.'"')->set('dateline',time())->query();
-                    $this->_currentTagId = $this->_databaseConn->lastInsertId();
-                }else{
-                    $this->_currentTagId = $tagExists['id'];
-                }
                 $this->_printMeg('Start request list page: ' . $tagsListPage);
                 $listFirstPageContent = $this->_httpRequest($tagsListPage, $this->_baseSite['stackoverflow']);
                 $listXpath = $this->_loadXpath($listFirstPageContent);
@@ -236,13 +254,14 @@ class Spider
         if($questionsNode->length > 0){
             /*  *  获取到每个节点的链接 id   如果id已经采集了略过 *  */
             for ($j = 0; $j < $questionsNode->length; $j++){
+
+
+
                 $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
                 // 问题内容页的链接地址
-                //$questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
-                $questionUrl = 'https://stackoverflow.com/questions/20035101/why-does-my-javascript-get-a-no-access-control-allow-origin-header-is-present';
-                $this->_data['originUrl'] = $questionUrl;
-                $this->_data['origin'] = 1;
-                $this->_data['dateline'] = time();
+                $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
+                //$questionUrl = 'https://stackoverflow.com/questions/23353173/unfortunately-myapp-has-stopped-how-can-i-solve-this';
+
                 // 问题id
                 preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
                 $this->_data['qid'] = $match[1];
@@ -255,71 +274,145 @@ class Spider
                 if ($questionExists)
                     continue;
 
-                $this->_data['tagId'] = $this->_currentTagId;
+                try {
+                    // 开启事务
+                    $this->_databaseConn->beginTrans();
 
-                // 请求问题页面
-                $this->_printMeg('start request question url : '.$questionUrl);
-                $questionDocument = $this->_httpRequest($questionUrl,$this->_baseSite['stackoverflow']);
-                $questionXpath = $this->_loadXpath($questionDocument);
+                    $this->_data['post_author'] = 1;  // 作者id
+                    $this->_data['post_date'] = date('Y-m-d H:i:s');
+                    $this->_data['post_date_gmt'] = date('Y-m-d H:i:s');
+                    $arr = explode('/', $questionUrl);
+                    $this->_data['post_name'] = end($arr);
+                    $this->_data['post_modified'] = date('Y-m-d H:i:s');
+                    $this->_data['post_modified_gmt'] = date('Y-m-d H:i:s');;
+                    //$this->_data['tagId'] = $this->_currentTagId;
 
-                // 标题
-                $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
-                if($titleNode->length == 1){
-                    $this->_data['title'] = $titleNode->item(0)->textContent;
-                }else{
-                    $this->_printMeg('Not Fetched Title Url:'.$questionUrl,301,'WARNING');
-                    continue;
-                }
+                    // 请求问题页面
+                    $this->_printMeg('start request question url : ' . $questionUrl);
+                    $questionDocument = $this->_httpRequest($questionUrl, $this->_baseSite['stackoverflow']);
+                    $questionXpath = $this->_loadXpath($questionDocument);
 
-                // 问题和答案内容 (提问，回答，评论)
+                    // 标题
+                    $titleNode = $questionXpath->query('//div[@id="question-header"]/h1/a');
+                    if ($titleNode->length == 1) {
+                        $this->_data['post_title'] = $titleNode->item(0)->textContent;
+                    } else {
+                        $this->_printMeg('Not Fetched Title Url:' . $questionUrl, 301, 'WARNING');
+                        continue;
+                    }
 
-                $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or contains(@class,"js-comments-container")]');
-                //var_dump($contentNode->length);
-                if ($contentNode->length >0) {
-                    for($i=0,$answerNum = 1,$html = ''; $i<$contentNode->length; $i++){
-                        $htmlStr = preg_replace('/&#xD;/','',$contentNode->item($i)->C14N());
-                        $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u','',$htmlStr);
-                        $imgPattern = '/<img[\s\S]+?src=\"(.+?)\"><\/img>/';
-                        preg_match_all($imgPattern,$replaceStr,$matchs);
+                    // 标签列表
+                    $tagListNode = $questionXpath->query('//div[@class="post-taglist"]/a');
 
-                        if (count($matchs[1]) > 0){
-                            for ($imgNum=0;$imgNum < count($matchs[1]);$imgNum++){
-                                $imgPath = $this->_saveImageObj->save($matchs[1][$imgNum]);
-                                $pattern = '/'.preg_quote($matchs[1][$imgNum],'/').'/';
-                                $replaceStr = preg_replace($pattern,$imgPath,$replaceStr);
+                    unset($termTaxonomyIds);
+                    if ($tagListNode->length > 0) {
+                        for ($listI = 0; $listI < $tagListNode->length; $listI++) {
+                            $tagExists = $this->_databaseConn->select('`term_id`')->from($this->_tags_table)->where(array('name ="' . $tagListNode->item($listI)->nodeValue . '"'))->row();
+                            if (!$tagExists) {
+                                $this->_databaseConn->insert($this->_tags_table)
+                                    ->set('name', '"' . $tagListNode->item($listI)->nodeValue . '"')
+                                    ->set('slug', '"' . $tagListNode->item($listI)->nodeValue . '"')
+                                    ->query();
+                                $termId =  $this->_databaseConn->lastInsertId();
+                                $this->_databaseConn->insert($this->_tags_category_table)
+                                    ->set('term_id',$termId)
+                                    ->set('taxonomy','"post_tag"')
+                                    ->query();
+                                $termTaxonomyIds[] = $this->_databaseConn->lastInsertId();
+
+                            } else {
+                                $termTaxonomy = $this->_databaseConn->select('`term_taxonomy_id`')->from($this->_tags_category_table)
+                                    ->where('term_id='.$tagExists['term_id'].' AND taxonomy="post_tag"')
+                                    ->row();
+                                $termTaxonomyIds[] = $termTaxonomy['term_taxonomy_id'];
                             }
                         }
-                        if($i == 0) {
-                            // 问题标识
-                            $html .= '<h1 id="my-question">问题内容:</h1>'.$replaceStr;
-                        }elseif($i == 1){
-                            // 问题评论
-                            $html .= '<h2 id="my-comment">问题评论:</h2>'.$replaceStr;
-                        }elseif ($i >= 2){
-                            if ($i == 2)
-                                $html .= '<h1 id="my-answers">答案:</h1>';
-                            if($i % 2 == 0) {
-                                $html .= '<h2 class="answers-num">答案' . $answerNum . ':</h2>'.$replaceStr;
-                                $answerNum++;
-                            }else{
-                                $html .= '<h2 class="my-comment">答案评论:</h2>'.$replaceStr;
+
+
+                    }
+
+                    // 问题和答案内容 (提问，回答，评论)
+
+                    $contentNode = $questionXpath->query('//div[@aria-label="question and answers"]/descendant::div[@class="post-text" or contains(@class,"js-comments-container")]');
+                    if ($contentNode->length > 0) {
+                        for ($i = 0, $answerNum = 1, $html = ''; $i < $contentNode->length; $i++) {
+                            $htmlStr = preg_replace('/&#xD;/', '', $contentNode->item($i)->C14N());
+                            $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u', '', $htmlStr);
+                            $imgPattern = '/<img[\s\S]+?src=\"(.+?)\"><\/img>/';
+                            preg_match_all($imgPattern, $replaceStr, $matchs);
+
+                            if (count($matchs[1]) > 0) {
+                                for ($imgNum = 0; $imgNum < count($matchs[1]); $imgNum++) {
+                                    $imgPath = $this->_saveImageObj->save($matchs[1][$imgNum]);
+                                    $pattern = '/' . preg_quote($matchs[1][$imgNum], '/') . '/';
+                                    $replaceStr = preg_replace($pattern, $imgPath, $replaceStr);
+                                }
                             }
+                            if ($i == 0) {
+                                // 问题标识
+                                $html .= '<h1 id="my-question">问题内容:</h1>' . $replaceStr;
+                            } elseif ($i == 1) {
+                                // 问题评论
+                                $html .= '<h2 id="my-comment">问题评论:</h2>' . $replaceStr;
+                            } elseif ($i >= 2) {
+                                if ($i == 2)
+                                    $html .= '<h1 id="my-answers">答案:</h1>';
+                                if ($i % 2 == 0) {
+                                    $html .= '<h2 class="answers-num">答案' . $answerNum . ':</h2>' . $replaceStr;
+                                    $answerNum++;
+                                } else {
+                                    $html .= '<h2 class="my-comment">答案评论:</h2>' . $replaceStr;
+                                }
+                            }
+                        }
+                        $html .= '<h2>原文地址：</h2>';
+                        $html .= $questionUrl;
+                        $this->_data['post_content'] = $html;
+
+
+                    } else {
+                        $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
+                        continue;
+                    }
+
+                    // 插入文章表
+                    $this->_databaseConn->insert($this->_questions_table)->cols($this->_data)->query();
+                    $ID = $this->_databaseConn->lastInsertId();
+
+                    // 修改文章表guid
+
+                    $this->_databaseConn->update($this->_questions_table)->set('guid', '"' . SITE_URL . $ID . '.html"')->where('`ID`=' . $ID)->query();
+
+                    //文章 - 标签 - 分类关系表
+                    $values = '(' . $ID . ',' . $this->_category . '),';
+                    if (count($termTaxonomyIds) > 0) {
+                        for ($item = 0; $item < count($termTaxonomyIds); $item++) {
+                            $values .= '(' . $ID . ',' . $termTaxonomyIds[$item] . '),';
                         }
                     }
-                    $this->_data['content'] = $html;
+                    $values = rtrim($values, ',');
+                    $this->_databaseConn->query('INSERT INTO ' . $this->_tags_post_cagory_table . ' (`object_id`,`term_taxonomy_id`) VALUES ' . $values);
 
+                    // 更新标签分类统计表
+                    $this->_databaseConn->query('UPDATE ' . $this->_tags_category_table . ' SET `count`=`count`+1 WHERE `term_id`=' . $this->_category);
+                    if (count($termTaxonomyIds) > 0) {
+                        $tagsIdStr = '(';
+                        for ($itemS = 0; $itemS < count($termTaxonomyIds); $itemS++) {
+                            $tagsIdStr .=  $termTaxonomyIds[$itemS].',';
+                        }
+                        $tagsIdStr = rtrim($tagsIdStr,',');
+                        $tagsIdStr .= ')';
+                        $this->_databaseConn->query('UPDATE ' . $this->_tags_category_table . ' SET `count`=`count`+1 WHERE `term_taxonomy_id` IN ' . $tagsIdStr . '  AND `taxonomy`="post_tag"');
+                    }
 
-
-                }else {
-                    $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
-                    continue;
+                    $this->_databaseConn->commitTrans();
+                    //exit();
+                }catch (\Exception $exception){
+                    $this->_printMeg('Msg: '.$exception->getMessage().PHP_EOL.'File : '.$exception->getFile().PHP_EOL.
+                        'Line: '.$exception->getLine().PHP_EOL
+                        ,'500','WARNING');
+                    $this->_databaseConn->rollBackTrans();
                 }
-
-                // 插入数据库
-
-                $this->_databaseConn->insert($this->_questions_table)->cols($this->_data)->query();
-
-                exit;
             }
         }
     }

@@ -260,7 +260,7 @@ class Spider
                 $relativeQuestionUrl  = $questionsNode->item($j)->getAttribute('href');
                 // 问题内容页的链接地址
                 $questionUrl = $this->_baseSite['stackoverflow'].$relativeQuestionUrl;
-                //$questionUrl = 'https://stackoverflow.com/questions/23353173/unfortunately-myapp-has-stopped-how-can-i-solve-this';
+                $questionUrl = 'https://stackoverflow.com/questions/47749652/is-it-possible-to-change-status-bar-color-for-all-view-controllers';
 
                 // 问题id
                 preg_match('/^\/questions\/(\d+)\/.+/',$relativeQuestionUrl,$match);
@@ -338,14 +338,14 @@ class Spider
                         for ($i = 0, $answerNum = 1, $html = ''; $i < $contentNode->length; $i++) {
                             $htmlStr = preg_replace('/&#xD;/', '', $contentNode->item($i)->C14N());
                             $replaceStr = preg_replace('/\s*–\s*<a class=\"comment-user\"[\s\S]+?<\/span><\/span>/u', '', $htmlStr);
-                            $imgPattern = '/<img[\s\S]+?src=\"(.+?)\"><\/img>/';
+                            $imgPattern = '/(<a.+?>)?<img[\s\S]+?src=\".+?\"><\/img>(<\/a>)?/';
                             preg_match_all($imgPattern, $replaceStr, $matchs);
-
-                            if (count($matchs[1]) > 0) {
-                                for ($imgNum = 0; $imgNum < count($matchs[1]); $imgNum++) {
-                                    $imgPath = $this->_saveImageObj->save($matchs[1][$imgNum]);
-                                    $pattern = '/' . preg_quote($matchs[1][$imgNum], '/') . '/';
-                                    $replaceStr = preg_replace($pattern, $imgPath, $replaceStr);
+                            //var_dump($matchs[0]);
+                            if (count($matchs[0]) > 0) {
+                                for ($imgNum = 0; $imgNum < count($matchs[0]); $imgNum++) {
+                                    //$imgPath = $this->_saveImageObj->save($matchs[1][$imgNum]);
+                                    //$pattern = '/' . preg_quote($matchs[1][$imgNum], '/') . '/';
+                                    $replaceStr = preg_replace($imgPattern, '', $replaceStr);
                                 }
                             }
                             if ($i == 0) {
@@ -374,6 +374,7 @@ class Spider
                         $this->_printMeg('Not Fetched Content Container Url:' . $questionUrl, 301, 'WARNING');
                         continue;
                     }
+
 
                     // 插入文章表
                     $this->_databaseConn->insert($this->_questions_table)->cols($this->_data)->query();
